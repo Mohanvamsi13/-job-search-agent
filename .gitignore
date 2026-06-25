@@ -1,0 +1,17 @@
+# Secrets - never commit your real API key
+.env
+
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
+
+# Anything personal you might drop in /data while testing
+data/*
+!data/.gitkeep
+
+# Local test artifacts
+/tmp/
