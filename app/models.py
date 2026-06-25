@@ -11,8 +11,15 @@ class ExperienceEntry(BaseModel):
     title: str
     start_date: str = ""
     end_date: str = ""
-    location: str = ""
+    location: str = ""       # free-text fallback, kept for backward compatibility
+    city: str = ""
+    country: str = ""
+    company_url: str = ""
     bullets: list[str] = Field(default_factory=list)
+
+    def location_line(self) -> str:
+        bits = [b for b in [self.city, self.country] if b]
+        return ", ".join(bits) or self.location
 
 
 class EducationEntry(BaseModel):
@@ -20,6 +27,10 @@ class EducationEntry(BaseModel):
     degree: str = ""
     field: str = ""
     graduation_date: str = ""
+    city: str = ""
+    country: str = ""
+    institution_url: str = ""
+    level_eqf: str = ""   # European Qualifications Framework level, only if stated
 
 
 class ResumeData(BaseModel):
@@ -30,6 +41,7 @@ class ResumeData(BaseModel):
     phone: str = ""
     location: str = ""
     nationality: str = ""       # used in German/Europass CV header, only if candidate stated it
+    linkedin_url: str = ""      # only if explicitly present in the original resume
     summary: str = ""
     skills: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)   # e.g. "German (C1)", "English (Native)"
@@ -43,10 +55,10 @@ class ResumeData(BaseModel):
         parts = [self.summary, " ".join(self.skills), " ".join(self.languages),
                   " ".join(self.certifications)]
         for exp in self.experience:
-            parts.append(f"{exp.company} {exp.title} {exp.location}")
+            parts.append(f"{exp.company} {exp.title} {exp.location_line()} {exp.company_url}")
             parts.extend(exp.bullets)
         for edu in self.education:
-            parts.append(f"{edu.institution} {edu.degree} {edu.field}")
+            parts.append(f"{edu.institution} {edu.degree} {edu.field} {edu.city} {edu.country} {edu.level_eqf}")
         return "\n".join(p for p in parts if p)
 
 

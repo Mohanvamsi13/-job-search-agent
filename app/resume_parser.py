@@ -31,25 +31,40 @@ Rules:
   "phone": "",
   "location": "",
   "nationality": "",
+  "linkedin_url": "",
   "summary": "",
   "skills": [""],
   "languages": [""],
   "certifications": [""],
   "experience": [
-    {"company": "", "title": "", "start_date": "", "end_date": "", "location": "", "bullets": [""]}
+    {"company": "", "title": "", "start_date": "", "end_date": "",
+     "city": "", "country": "", "company_url": "", "location": "", "bullets": [""]}
   ],
   "education": [
-    {"institution": "", "degree": "", "field": "", "graduation_date": ""}
+    {"institution": "", "degree": "", "field": "", "graduation_date": "",
+     "city": "", "country": "", "institution_url": "", "level_eqf": ""}
   ]
 }
 
 Notes:
 - "nationality": only fill if explicitly stated in the resume (e.g. "Nationality: German"). Leave empty otherwise - never guess from name, address, or any other signal.
+- "linkedin_url": only fill if a LinkedIn URL or handle is explicitly present. Leave empty otherwise.
 - "languages": only include if the resume explicitly lists language skills
   (e.g. "German (C1), English (Native)", "Languages: German - Fluent").
   Copy proficiency descriptors exactly as written. Leave the list empty if
   no language section exists - do not infer language skills from
   nationality, location, or any other field.
+- For each experience entry: "company" should be ONLY the company name
+  (e.g. "Reolink"), never combined with city/country. If the source lists
+  "City: X | Country: Y" separately, put those in "city" and "country" -
+  do not concatenate them into the company or location field. Only fill
+  "company_url" if a URL for the employer is explicitly shown. The
+  "location" field is a free-text fallback - only use it if the source
+  gives an address that doesn't cleanly split into city/country.
+- For each education entry: same separation applies for institution vs
+  city/country. "level_eqf" should only be filled if the source explicitly
+  states an EQF (European Qualifications Framework) level, e.g. "Level in
+  EQF: 7" - never infer this from the degree type.
 """
 
 

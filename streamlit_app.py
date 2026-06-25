@@ -25,6 +25,7 @@ from app.cover_letter import generate_cover_letter
 from app.resume_writer import write_resume_docx
 from app.resume_writer_de import write_resume_docx_de
 from app.resume_writer_pdf import write_resume_pdf_standard, write_resume_pdf_de
+from app.resume_writer_pdf_europass import write_resume_pdf_europass
 from app.cover_letter_writer import write_cover_letter_docx
 from app.cover_letter_writer_pdf import write_cover_letter_pdf
 from app.job_sources.arbeitnow import fetch_jobs as fetch_arbeitnow_jobs
@@ -58,6 +59,7 @@ if _app_password:
 
 DEFAULTS = {
     "resume": None,
+    "photo_bytes": None,
     "jobs": [],
     "selected_job": None,
     "tailored": None,
@@ -79,6 +81,9 @@ st.header("1. Your resume")
 
 if st.session_state.resume is None:
     uploaded = st.file_uploader("Upload your master resume", type=["docx", "pdf", "txt"])
+    photo_upload = st.file_uploader(
+        "Optional: profile photo for Europass-style CV", type=["jpg", "jpeg", "png"]
+    )
     if uploaded and st.button("Parse resume"):
         with st.spinner("Reading your resume..."):
             suffix = Path(uploaded.name).suffix
@@ -87,6 +92,8 @@ if st.session_state.resume is None:
                 tmp_path = tmp.name
             try:
                 st.session_state.resume = parse_resume(tmp_path)
+                if photo_upload:
+                    st.session_state.photo_bytes = photo_upload.getvalue()
                 st.rerun()
             except Exception as e:
                 st.error(f"Couldn't parse resume: {e}")
@@ -222,13 +229,19 @@ if st.session_state.selected_job:
 
         cv_format = st.radio(
             "CV / cover letter format",
-            ["German style (tabular CV + formal business letter)", "Standard / international"],
+            [
+                "Europass-style (photo, structured EU fields)",
+                "German style (tabular CV + formal business letter)",
+                "Standard / international",
+            ],
             horizontal=True,
-            help="German employers generally expect a tabellarischer Lebenslauf "
-                 "(tabular CV with dates, personal details block, and a closing "
-                 "signature line) and a formal business-letter cover letter, "
-                 "rather than a US-style resume.",
+            help="Europass-style includes your photo (if uploaded) and "
+                 "City/Country/Field-of-study/EQF-level metadata - closest "
+                 "to the official EU CV format. German style is a "
+                 "tabellarischer Lebenslauf without the photo/EQF fields. "
+                 "Standard is a plain international resume layout.",
         )
+        use_europass_format = cv_format.startswith("Europass")
         use_german_format = cv_format.startswith("German")
 
         col_resume, col_letter = st.columns(2)
@@ -258,7 +271,10 @@ if st.session_state.selected_job:
             out_path = "/tmp/tailored_resume.docx"
             pdf_path = "/tmp/tailored_resume.pdf"
             file_stub = f"resume_{(tr.full_name or 'tailored').replace(' ', '_')}_{job.company.replace(' ', '_')}"
-            if use_german_format:
+            if use_europass_format:
+                write_resume_pdf_europass(tr, pdf_path, photo_bytes=st.session_state.photo_bytes)
+                write_resume_docx_de(tr, out_path)  # no dedicated Europass docx writer yet - DIN-style docx as fallback
+            elif use_german_format:
                 write_resume_docx_de(tr, out_path)
                 write_resume_pdf_de(tr, pdf_path)
             else:
@@ -282,7 +298,12 @@ if st.session_state.selected_job:
                         file_name=f"{file_stub}.pdf",
                         use_container_width=True,
                     )
-            if use_german_format and not tr.languages:
+            if use_europass_format and not st.session_state.photo_bytes:
+                st.caption(
+                    "No photo uploaded - the PDF will render without one. "
+                    "Go back to step 1 and upload a photo if you want it included."
+                )
+            if (use_europass_format or use_german_format) and not tr.languages:
                 st.caption(
                     "Note: no language section appears because your original "
                     "resume didn't list language proficiencies. Add a "
@@ -305,7 +326,7 @@ if st.session_state.selected_job:
 
             letter_dl_col1, letter_dl_col2 = st.columns(2)
             with letter_dl_col1:
-                if use_german_format:
+                if use_german_format or use_europass_format:
                     letter_out_path = "/tmp/cover_letter.docx"
                     write_cover_letter_docx(st.session_state.resume, jd_for_letter, letter_text, letter_out_path)
                     with open(letter_out_path, "rb") as f:
