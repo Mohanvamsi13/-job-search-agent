@@ -24,7 +24,9 @@ from app.tailor import tailor_resume
 from app.cover_letter import generate_cover_letter
 from app.resume_writer import write_resume_docx
 from app.resume_writer_de import write_resume_docx_de
+from app.resume_writer_pdf import write_resume_pdf_standard, write_resume_pdf_de
 from app.cover_letter_writer import write_cover_letter_docx
+from app.cover_letter_writer_pdf import write_cover_letter_pdf
 from app.job_sources.arbeitnow import fetch_jobs as fetch_arbeitnow_jobs
 from app.job_sources.arbeitsagentur import (
     fetch_jobs as fetch_arbeitsagentur_jobs,
@@ -254,17 +256,32 @@ if st.session_state.selected_job:
                         st.write(f"- {b}")
 
             out_path = "/tmp/tailored_resume.docx"
+            pdf_path = "/tmp/tailored_resume.pdf"
+            file_stub = f"resume_{(tr.full_name or 'tailored').replace(' ', '_')}_{job.company.replace(' ', '_')}"
             if use_german_format:
                 write_resume_docx_de(tr, out_path)
+                write_resume_pdf_de(tr, pdf_path)
             else:
                 write_resume_docx(tr, out_path)
-            with open(out_path, "rb") as f:
-                st.download_button(
-                    "Download tailored resume (.docx)",
-                    f,
-                    file_name=f"resume_{(tr.full_name or 'tailored').replace(' ', '_')}_{job.company.replace(' ', '_')}.docx",
-                    use_container_width=True,
-                )
+                write_resume_pdf_standard(tr, pdf_path)
+
+            dl_col1, dl_col2 = st.columns(2)
+            with dl_col1:
+                with open(out_path, "rb") as f:
+                    st.download_button(
+                        "Download resume (.docx)",
+                        f,
+                        file_name=f"{file_stub}.docx",
+                        use_container_width=True,
+                    )
+            with dl_col2:
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        "Download resume (.pdf)",
+                        f,
+                        file_name=f"{file_stub}.pdf",
+                        use_container_width=True,
+                    )
             if use_german_format and not tr.languages:
                 st.caption(
                     "Note: no language section appears because your original "
@@ -283,25 +300,38 @@ if st.session_state.selected_job:
                 st.success("No unsupported claims detected in the cover letter.")
 
             letter_text = st.text_area("Edit before sending:", value=cl_result["text"], height=300)
+            jd_for_letter = JobDescription(title=job.title, company=job.company, location=job.location)
+            letter_stub = f"cover_letter_{job.company.replace(' ', '_')}"
 
-            if use_german_format:
-                jd_for_letter = JobDescription(title=job.title, company=job.company, location=job.location)
-                letter_out_path = "/tmp/cover_letter.docx"
-                write_cover_letter_docx(st.session_state.resume, jd_for_letter, letter_text, letter_out_path)
-                with open(letter_out_path, "rb") as f:
+            letter_dl_col1, letter_dl_col2 = st.columns(2)
+            with letter_dl_col1:
+                if use_german_format:
+                    letter_out_path = "/tmp/cover_letter.docx"
+                    write_cover_letter_docx(st.session_state.resume, jd_for_letter, letter_text, letter_out_path)
+                    with open(letter_out_path, "rb") as f:
+                        st.download_button(
+                            "Download letter (.docx)",
+                            f,
+                            file_name=f"{letter_stub}.docx",
+                            use_container_width=True,
+                        )
+                else:
                     st.download_button(
-                        "Download cover letter (.docx)",
-                        f,
-                        file_name=f"cover_letter_{job.company.replace(' ', '_')}.docx",
+                        "Download letter (.txt)",
+                        letter_text,
+                        file_name=f"{letter_stub}.txt",
                         use_container_width=True,
                     )
-            else:
-                st.download_button(
-                    "Download cover letter (.txt)",
-                    letter_text,
-                    file_name=f"cover_letter_{job.company.replace(' ', '_')}.txt",
-                    use_container_width=True,
-                )
+            with letter_dl_col2:
+                letter_pdf_path = "/tmp/cover_letter.pdf"
+                write_cover_letter_pdf(st.session_state.resume, jd_for_letter, letter_text, letter_pdf_path)
+                with open(letter_pdf_path, "rb") as f:
+                    st.download_button(
+                        "Download letter (.pdf)",
+                        f,
+                        file_name=f"{letter_stub}.pdf",
+                        use_container_width=True,
+                    )
 
         st.divider()
         st.info(

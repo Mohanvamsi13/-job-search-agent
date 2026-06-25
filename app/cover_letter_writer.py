@@ -15,6 +15,7 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from app.models import JobDescription, ResumeData
+from app.de_format_utils import extract_city
 
 
 def write_cover_letter_docx(

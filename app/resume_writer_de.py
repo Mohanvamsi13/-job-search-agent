@@ -21,6 +21,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 
 from app.models import ResumeData
+from app.de_format_utils import extract_city
 
 LABELS = {
     "personal": "Persönliche Daten",
@@ -177,7 +178,7 @@ def write_resume_docx_de(resume: ResumeData, output_path: str, signature_city: s
     # ---- Signature line ----
     doc.add_paragraph()
     doc.add_paragraph()
-    city = signature_city or (resume.location.split(",")[0].strip() if resume.location else "")
+    city = signature_city or extract_city(resume.location)
     today = date.today().strftime("%d.%m.%Y")
     sig_line = f"{city}, {today}" if city else f"___________, {today}"
     doc.add_paragraph(sig_line)

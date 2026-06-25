@@ -1,9 +1,18 @@
 # Job Search Agent
 
-A personal job search copilot for cloud/DevOps/SRE roles in Germany. Finds jobs,
-tailors your resume and cover letter per job description, tracks applications,
-and preps you for interviews — while keeping you in control of every decision
-and every submission.
+A personal job search copilot for cloud/DevOps/SRE roles in Germany. Searches
+two free job sources, tailors your resume and cover letter to a specific
+posting, fact-checks both against your real resume, and formats either as a
+standard or German-style CV — while keeping you in control of every decision
+and every submission. (Application tracking and interview prep are on the
+roadmap, not built yet - see Status below.)
+
+## Live demo
+
+Deployed at: **https://careerpilot-de.streamlit.app**
+
+It's password-gated (see `APP_PASSWORD` below) so it's visible as a working
+project without letting random visitors burn through the Groq API quota.
 
 ## Why it's built this way
 
@@ -61,42 +70,58 @@ billing restriction, so it works for Germany-based use without paying.
 ```bash
 streamlit run streamlit_app.py
 ```
-Opens a browser tab with a simple 3-step interface: upload resume, paste job
-description, click tailor, review flags, download the result as a Word doc.
+Opens a browser tab with the full flow: upload your resume once, search live
+jobs by keyword/location/experience level (merging Arbeitnow + Arbeitsagentur),
+pick a job, get a tailored resume + cover letter with fact-check flags, choose
+standard or German CV format, download both, then open the original posting
+to apply yourself.
 
 **Option B — raw API (for testing endpoints directly):**
 ```bash
 uvicorn app.main:app --reload
 ```
-Then visit http://127.0.0.1:8000/docs for the interactive Swagger UI.
+Then visit http://127.0.0.1:8000/docs for the interactive Swagger UI. Note:
+this covers resume parsing, JD parsing, and tailoring only - job search and
+cover letters are currently Streamlit-only, not yet exposed as API endpoints.
 
-Both call the exact same underlying code in `app/` - pick whichever you prefer.
+Both call the exact same underlying code in `app/` where functionality overlaps.
 
 ## Project layout
 
 ```
-streamlit_app.py      # the GUI - run this
+streamlit_app.py        # the GUI - run this
 app/
-  config.py            # env/config loading
-  llm_client.py         # unified Groq client - swap providers here only
-  models.py             # shared data structures (ResumeData, JobListing, etc.)
-  resume_parser.py       # docx/pdf resume -> structured ResumeData
-  jd_parser.py            # raw JD text -> structured JobDescription
-  tailor.py                # ResumeData + JobDescription -> tailored resume draft
-  cover_letter.py          # ResumeData + JobDescription -> cover letter draft
-  fact_check.py             # flags unsupported claims in tailored output
-  resume_writer.py          # structured resume -> formatted .docx
-  job_matcher.py            # scores/ranks fetched jobs against resume (no LLM)
+  config.py               # env/config loading
+  llm_client.py            # unified Groq client - swap providers here only
+  models.py                # shared data structures (ResumeData, JobListing, etc.)
+  resume_parser.py          # docx/pdf resume -> structured ResumeData
+  jd_parser.py               # raw JD text -> structured JobDescription
+  tailor.py                   # ResumeData + JobDescription -> tailored resume draft
+  cover_letter.py             # ResumeData + JobDescription -> cover letter draft
+  fact_check.py                # flags unsupported claims in tailored output
+  resume_writer.py              # structured resume -> standard formatted .docx
+  resume_writer_de.py            # structured resume -> German tabular CV .docx
+  cover_letter_writer.py          # cover letter text -> formal business letter .docx
+  job_matcher.py                   # scores/ranks fetched jobs against resume (no LLM)
+  quick_links.py                    # pre-filled search URLs for LinkedIn/Indeed/StepStone/Xing
   job_sources/
-    arbeitnow.py             # Arbeitnow public API client (Germany/EU)
-  main.py                   # FastAPI app (alternative to the Streamlit UI)
+    arbeitnow.py                     # Arbeitnow public API client (Germany/EU)
+    arbeitsagentur.py                 # Bundesagentur fur Arbeit Jobsuche API client
+  main.py                              # FastAPI app (alternative to the Streamlit UI)
 ```
 
-## Status: scaffold
+## Status
 
-This is stage 1 of the build: resume parsing, JD parsing, the tailoring
-engine, and the fact-check guard. Job fetching (Arbeitnow + Arbeitsagentur),
-cover letters, application tracking, and interview prep get layered on next.
+**Built:** resume parsing, JD parsing, the tailoring engine with the
+fact-check guard, cover letter generation (same guard), job search across
+two free sources (Arbeitnow + Arbeitsagentur) with no-LLM-cost ranking by
+resume fit and experience level, quick-launch search links for platforms
+with no public API, and German/Europass-style CV + formal cover letter
+formatting.
+
+**Not yet built:** application tracking (applied/interview/offer status),
+interview prep generation, and semi-automated apply assistance (prefilling
+application forms via Playwright, with you still clicking submit).
 
 Every LLM call goes through `app/llm_client.py`, which talks to Groq's free,
 OpenAI-compatible API (model: `llama-3.3-70b-versatile`). This was chosen
@@ -146,3 +171,44 @@ Two things worth knowing:
   resume and the generated letter are in (English, by default, since
   that's what was tailored). If you want the letter itself written in
   German, mention that and the prompt can be adjusted.
+
+## Arbeitsagentur integration
+
+Job search now pulls from two free, legitimate sources and merges them
+before ranking:
+
+- **Arbeitnow** - public API, good startup/tech coverage
+- **Arbeitsagentur** - Germany's official federal job board, the largest
+  free source available (1M+ active postings), strong on enterprise/
+  Mittelstand roles Arbeitnow doesn't have
+
+One technical note: Arbeitsagentur's search results don't include the full
+job description (only title/employer/location) - getting the full text
+needs a second API call per job. To avoid making hundreds of extra calls
+for jobs you never select, that second call only happens when you click
+"Tailor for this" on a specific Arbeitsagentur listing - not during the
+search itself.
+
+This integration uses a community-documented (bundesAPI/jobsuche-api), not
+officially supported, API - it's the same endpoint Arbeitsagentur's own
+mobile app calls, but Arbeitsagentur could change it without notice. If a
+search using this source ever returns nothing, Arbeitnow results still
+come through independently - one source failing doesn't block the other.
+
+## PDF output
+
+Both the resume and cover letter can now be downloaded as PDF in addition
+to docx, for both the standard and German formats. PDF is generated
+directly with `reportlab` (a pure-Python library) rather than converting
+docx -> PDF, which would require installing LibreOffice on the server -
+heavier, slower to build, and another dependency that can fail on a
+hosting platform. PDF is also a better choice for a final resume anyway:
+it renders identically everywhere, whereas docx can shift slightly between
+Word, Google Docs, and Pages.
+
+`app/de_format_utils.py` holds a shared `extract_city()` helper used by
+both the docx and PDF German-format writers, for the closing "City, Date"
+signature line - it correctly pulls the city out of a full street address
+(e.g. "Langenbergstraße 96, 50765, Köln, Germany" -> "Köln") rather than
+naively taking the first comma-separated chunk, which would have produced
+the street address instead of the city.
