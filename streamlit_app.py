@@ -25,7 +25,11 @@ from app.cover_letter import generate_cover_letter
 from app.resume_writer import write_resume_docx
 from app.resume_writer_de import write_resume_docx_de
 from app.cover_letter_writer import write_cover_letter_docx
-from app.job_sources.arbeitnow import fetch_jobs
+from app.job_sources.arbeitnow import fetch_jobs as fetch_arbeitnow_jobs
+from app.job_sources.arbeitsagentur import (
+    fetch_jobs as fetch_arbeitsagentur_jobs,
+    fetch_job_description,
+)
 from app.job_matcher import rank_jobs
 from app.quick_links import build_quick_links
 
@@ -133,14 +137,29 @@ if st.session_state.resume:
             st.link_button(f"Search {platform} →", url, use_container_width=True)
 
     if search_clicked:
-        with st.spinner("Fetching live job postings..."):
-            raw_jobs = fetch_jobs(
+        with st.spinner("Fetching live job postings from Arbeitnow and Arbeitsagentur..."):
+            arbeitnow_jobs = fetch_arbeitnow_jobs(
                 keyword=keyword,
                 location=location,
                 remote_only=remote_only,
                 posted_within_days=posted_within_days,
                 max_pages=6,
             )
+            try:
+                arbeitsagentur_jobs = fetch_arbeitsagentur_jobs(
+                    keyword=keyword,
+                    location=location,
+                    remote_only=remote_only,
+                    posted_within_days=posted_within_days,
+                    max_pages=4,
+                )
+            except Exception:
+                # Don't let one source's failure block the other - this is
+                # a community-documented (not officially supported) API,
+                # so a graceful degrade matters here.
+                arbeitsagentur_jobs = []
+
+            raw_jobs = arbeitnow_jobs + arbeitsagentur_jobs
             st.session_state.jobs = rank_jobs(raw_jobs, st.session_state.resume, level)
             st.session_state.selected_job = None
             st.session_state.tailored = None
@@ -159,7 +178,7 @@ if st.session_state.resume:
                 with cols[0]:
                     st.markdown(f"**{job.title}** — {job.company}")
                     posted_label = job.posted_at[:10] if job.posted_at else "date unknown"
-                    st.caption(f"{job.location or 'location unspecified'}  |  posted {posted_label}  |  level: {job.detected_level}  |  matched skills: {', '.join(job.matched_skills) or 'none'}")
+                    st.caption(f"{job.location or 'location unspecified'}  |  posted {posted_label}  |  level: {job.detected_level}  |  source: {job.source}  |  matched skills: {', '.join(job.matched_skills) or 'none'}")
                 with cols[1]:
                     st.metric("Match", f"{job.match_score:.0f}%", label_visibility="collapsed")
                 with cols[2]:
@@ -179,7 +198,17 @@ if st.session_state.selected_job:
     if st.session_state.tailored is None:
         with st.spinner("Analyzing job description, tailoring your resume, and writing a cover letter..."):
             try:
-                jd = parse_jd(job.description, company_hint=job.company, title_hint=job.title)
+                description = job.description
+                if not description and job.source == "arbeitsagentur":
+                    description = fetch_job_description(job.external_id)
+                    if not description:
+                        st.warning(
+                            "Couldn't retrieve the full job description from "
+                            "Arbeitsagentur for this listing - tailoring may be "
+                            "limited. You can open the original posting and "
+                            "paste the description in manually if needed."
+                        )
+                jd = parse_jd(description, company_hint=job.company, title_hint=job.title)
                 st.session_state.tailored = tailor_resume(st.session_state.resume, jd)
                 st.session_state.cover_letter = generate_cover_letter(st.session_state.resume, jd)
             except Exception as e:
