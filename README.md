@@ -1,13 +1,14 @@
 # Job Search Agent
 
-A personal job search assistant for cloud/DevOps/SRE roles in Germany.
-Upload your resume once, search real job postings, then get a tailored
-resume and cover letter for whichever job you pick — every claim checked
+A personal job search assistant for Germany. Upload your resume once,
+search real job postings for whatever field you're in, then get a tailored
+resume and cover letter for whichever job you pick, every claim checked
 against what's actually true in your resume. You stay in control of every
 download and every application; nothing gets submitted automatically.
 
-**Live demo:** https://careerpilot-de.streamlit.app (password-protected — ask
-the owner for access)
+**Works for any role.** The resume parser, tailoring engine, fact-checker,
+and job search are all generic, type any job title into the search box
+and it works the same way, regardless of field.
 
 ---
 
@@ -15,18 +16,18 @@ the owner for access)
 
 - **Searches two free job sources** (Arbeitnow + Germany's official
   Arbeitsagentur) and ranks results against your resume and experience level
-- **Tailors your resume** to a specific job — reorders and rewords your real
+- **Tailors your resume** to a specific job, reorders and rewords your real
   bullets to match what that job is asking for, without inventing anything
 - **Writes a cover letter** for that job, same honesty rules
-- **Flags anything that looks made up** — an independent check compares the
+- **Flags anything that looks made up**, an independent check compares the
   tailored output against your original resume and calls out any claim it
   can't trace back to something you actually wrote
-- **Tells you what's missing** — if a job wants a skill your resume doesn't
+- **Tells you what's missing**, if a job wants a skill your resume doesn't
   show, it'll ask if you genuinely have real experience with it; if you do,
   you describe it yourself and that becomes a real bullet, in your words
-- **Three resume designs** — a modern colored-sidebar layout, an
+- **Three resume designs**, a modern colored-sidebar layout, an
   Europass-style layout (with your photo, City/Country/EQF-level fields),
-  or a clean standard layout — each downloadable as PDF or Word
+  or a clean standard layout, each downloadable as PDF or Word
 - **Quick-launch search links** for LinkedIn, Indeed, StepStone, and Xing,
   since those don't offer a public search API
 
@@ -35,7 +36,7 @@ the owner for access)
 - Never adds a skill, technology, or achievement to your resume unless it's
   either already in your original resume or something you typed yourself
   after being asked directly
-- Never submits an application for you — it gets your documents ready, then
+- Never submits an application for you, it gets your documents ready, then
   hands you a link to apply yourself
 
 ---
@@ -71,19 +72,20 @@ A browser tab opens automatically. If not, go to **http://localhost:8501**.
 ## How to use it
 
 1. **Upload your resume** (.docx, .pdf, or .txt) and optionally a photo
-2. **Search** — type a role keyword (e.g. "DevOps"), pick a location and
+2. **Search**, type any role keyword (e.g. "Frontend Developer",
+   "Project Manager", "Registered Nurse"), pick a location and
    experience level, click **Find jobs**
 3. **Pick a job** from the results and click **Tailor for this**
-4. **Review** — check the fact-check flags, fill in any skill-gap questions
+4. **Review**, check the fact-check flags, fill in any skill-gap questions
    if you genuinely have that experience, pick a resume design
 5. **Download** your resume and cover letter (PDF or Word)
-6. **Apply** — click through to the original posting and submit it yourself
+6. **Apply**, click through to the original posting and submit it yourself
 
 ---
 
 ## Why it's built this way (for the curious)
 
-The riskiest part of a tool like this is resume tailoring — an AI asked to
+The riskiest part of a tool like this is resume tailoring, an AI asked to
 "match keywords" will happily invent a claim that sounds plausible but
 isn't true. This project treats that as a guardrail problem, not a
 prompting problem: the AI is only ever shown your real resume as source
@@ -94,7 +96,7 @@ flags are shown to you, never silently auto-corrected.
 Job searching and job tailoring are also kept deliberately separate:
 searching/ranking hundreds of postings is just keyword matching, so it's
 instant and free; tailoring needs an actual AI call, so it only happens for
-the one job you click into — not all of them.
+the one job you click into, not all of them.
 
 ## Project structure
 
@@ -131,21 +133,52 @@ app/
 **Not yet built:** application tracking (applied/interview/offer status)
 and interview prep generation.
 
+## Deploy your own copy (skip local setup entirely)
+
+You don't have to run this on your own machine at all, you can deploy your
+own hosted copy with its own URL, using Streamlit's free hosting, in about
+five minutes:
+
+1. **Fork this repo** on GitHub (button top-right of the repo page), so you
+   have your own copy under your own GitHub account.
+2. **Get a free Groq API key** at console.groq.com → API Keys → Create API
+   Key (no credit card needed).
+3. **Go to share.streamlit.io** and sign in with "Continue with GitHub."
+4. Click **"Create app"** → **"Deploy a public app from GitHub"**, then pick:
+   - Repository: your forked copy
+   - Branch: `main`
+   - Main file path: `streamlit_app.py`
+5. Before clicking Deploy, click **"Advanced settings"** and paste into the
+   Secrets box:
+   ```toml
+   GROQ_API_KEY = "your_groq_key_here"
+   APP_PASSWORD = "choose_any_password"
+   ```
+   (Also set the Python version to 3.12 if it defaults to something newer,
+   3.12 has stable pre-built packages for every dependency this needs.)
+6. Click **Deploy**. After the build finishes, you'll have your own URL like
+   `your-app-name.streamlit.app`, share that and your password with whoever
+   you want to use it, or keep it to yourself.
+
+Your hosted copy is fully independent: your own Groq quota, your own
+password, your own resume data. Nothing is shared with anyone else's
+deployment, including the original.
+
 ## FAQ / troubleshooting
 
-**"Invalid API Key" error** — your `.env` file doesn't have a real key in
+**"Invalid API Key" error**, your `.env` file doesn't have a real key in
 it, or it got copied with a typo/extra space. Open `.env` and check the
 line reads exactly `GROQ_API_KEY=gsk_...` with no quotes or spaces.
 
-**"Rate limit reached" error** — Groq's free tier caps usage per day. Wait
+**"Rate limit reached" error**, Groq's free tier caps usage per day. Wait
 the amount of time shown in the error (resets on a rolling basis), or
 reduce how many jobs you tailor in one sitting.
 
-**A job's description couldn't be fetched** — happens occasionally with
+**A job's description couldn't be fetched**, happens occasionally with
 Arbeitsagentur listings. The app will ask you to paste the description in
 manually rather than guessing from nothing.
 
 **Want to deploy this somewhere with a public link?** Set an `APP_PASSWORD`
 environment variable on your hosting platform (e.g. Streamlit Community
-Cloud's "Secrets" panel) — `streamlit_app.py` shows a password gate
+Cloud's "Secrets" panel), `streamlit_app.py` shows a password gate
 whenever that variable is set, so a public URL doesn't mean public access.
