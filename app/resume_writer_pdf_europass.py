@@ -27,6 +27,7 @@ from reportlab.lib import colors
 from app.models import ResumeData
 
 ACCENT = colors.HexColor("#235789")   # an original color choice, not Europass's specific brand color
+ACCENT_LIGHT = colors.HexColor("#EAF2FA")
 LABEL_COL = 4.6 * cm
 DATE_COL = 3.0 * cm
 CONTENT_COL_FULL = 18.0 * cm - LABEL_COL          # for sections with no date column
@@ -40,17 +41,21 @@ def _esc(text) -> str:
 def _styles():
     base = getSampleStyleSheet()
     return {
-        "name": ParagraphStyle("Name", parent=base["Title"], fontSize=20, leading=24,
-                                alignment=TA_LEFT, textColor=colors.black),
-        "contact": ParagraphStyle("Contact", parent=base["Normal"], fontSize=10, leading=14),
-        "label": ParagraphStyle("Label", parent=base["Normal"], fontSize=10, leading=13,
+        "name": ParagraphStyle("Name", parent=base["Title"], fontSize=13, leading=16,
+                                alignment=TA_LEFT, textColor=ACCENT),
+        "contact": ParagraphStyle("Contact", parent=base["Normal"], fontSize=9, leading=12),
+        "label": ParagraphStyle("Label", parent=base["Normal"], fontSize=9.5, leading=12,
                                  textColor=ACCENT, fontName="Helvetica-Bold"),
-        "date": ParagraphStyle("Date", parent=base["Normal"], fontSize=9, leading=12,
+        "date": ParagraphStyle("Date", parent=base["Normal"], fontSize=8.5, leading=11,
                                 textColor=colors.grey),
-        "normal": ParagraphStyle("Normal2", parent=base["Normal"], fontSize=10, leading=13),
-        "meta": ParagraphStyle("Meta", parent=base["Normal"], fontSize=9, leading=12,
+        "normal": ParagraphStyle("Normal2", parent=base["Normal"], fontSize=9, leading=12),
+        "meta": ParagraphStyle("Meta", parent=base["Normal"], fontSize=8.5, leading=11,
                                 textColor=colors.grey),
     }
+
+
+def _bullet_join(items: list[str]) -> str:
+    return '  <font color="#235789">•</font>  '.join(_esc(i) for i in items)
 
 
 def _prepare_photo(photo_bytes: bytes, size_cm: float = 2.6):
@@ -82,13 +87,15 @@ def _link(text: str, url: str) -> str:
 
 def _section_table(rows: list[list], col_widths: list[float]) -> Table:
     t = Table(rows, colWidths=col_widths)
-    t.setStyle(TableStyle([
+    style_cmds = [
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
+        ("BACKGROUND", (0, 0), (0, -1), ACCENT_LIGHT),
+    ]
+    t.setStyle(TableStyle(style_cmds))
     return t
 
 
@@ -130,11 +137,11 @@ def write_resume_pdf_europass(resume: ResumeData, output_path: str, photo_bytes:
     else:
         el.extend(name_block)
 
-    el.append(Spacer(1, 6))
-    rule = Table([[""]], colWidths=[18.0 * cm], rowHeights=[1])
-    rule.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 1, colors.lightgrey)]))
+    el.append(Spacer(1, 8))
+    rule = Table([[""]], colWidths=[18.0 * cm], rowHeights=[2.5])
+    rule.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 2.5, ACCENT)]))
     el.append(rule)
-    el.append(Spacer(1, 10))
+    el.append(Spacer(1, 12))
 
     # ---------------------------------------------------------- ABOUT
     if resume.summary:
@@ -171,8 +178,11 @@ def write_resume_pdf_europass(resume: ResumeData, output_path: str, photo_bytes:
     # ---------------------------------------------------------- EXPERIENCE
     if resume.experience:
         rows = []
-        for i, exp in enumerate(resume.experience):
-            label = Paragraph("WORK<br/>EXPERIENCE", s["label"]) if i == 0 else Paragraph("", s["label"])
+        header_row_indices = []
+        first_label_used = False
+        for exp in resume.experience:
+            label = Paragraph("WORK<br/>EXPERIENCE", s["label"]) if not first_label_used else Paragraph("", s["label"])
+            first_label_used = True
             date_p = Paragraph(f"[ {_esc(exp.start_date)} - {_esc(exp.end_date) or 'Present'} ]", s["date"])
 
             company_line = _link(f"<b>{_esc(exp.company)}</b>", exp.company_url) if exp.company else ""
@@ -185,23 +195,43 @@ def write_resume_pdf_europass(resume: ResumeData, output_path: str, photo_bytes:
                 meta_bits.append(_esc(exp.location))
             meta_line = " | ".join(meta_bits)
             title_line = f"<b>{_esc(exp.title)}</b>" if exp.title else ""
-            bullets_html = "<br/>".join(f"&bull; {_esc(b)}" for b in exp.bullets)
 
-            content_html = "<br/>".join(p for p in [company_line, meta_line, title_line, bullets_html] if p)
-            rows.append([label, date_p, Paragraph(content_html, s["normal"])])
-        el.append(_section_table(rows, [LABEL_COL, DATE_COL, CONTENT_COL_NARROW]))
+            # Header block (company/meta/title) is one row - short, fine to
+            # keep together. Each bullet gets its OWN row so the table can
+            # break the page between bullets instead of being forced to
+            # push the entire multi-bullet job to the next page (which is
+            # what caused large blank gaps at the bottom of pages before).
+            header_row_indices.append(len(rows))
+            header_html = "<br/>".join(p for p in [company_line, meta_line, title_line] if p)
+            rows.append([label, date_p, Paragraph(header_html, s["normal"])])
+            for bullet in exp.bullets:
+                rows.append(["", "", Paragraph(f"&bull; {_esc(bullet)}", s["normal"])])
+
+        exp_table = Table(rows, colWidths=[LABEL_COL, DATE_COL, CONTENT_COL_NARROW])
+        style_cmds = [
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("BACKGROUND", (0, 0), (0, -1), ACCENT_LIGHT),
+        ]
+        for idx in header_row_indices[1:]:  # extra space before every job after the first
+            style_cmds.append(("TOPPADDING", (0, idx), (-1, idx), 16))
+        exp_table.setStyle(TableStyle(style_cmds))
+        el.append(exp_table)
 
     # ---------------------------------------------------------- SKILLS
     if resume.skills:
         el.append(_section_table(
-            [[Paragraph("SKILLS", s["label"]), Paragraph(" | ".join(_esc(sk) for sk in resume.skills), s["normal"])]],
+            [[Paragraph("SKILLS", s["label"]), Paragraph(_bullet_join(resume.skills), s["normal"])]],
             [LABEL_COL, CONTENT_COL_FULL],
         ))
 
     # ---------------------------------------------------------- LANGUAGES
     if resume.languages:
         el.append(_section_table(
-            [[Paragraph("LANGUAGES", s["label"]), Paragraph(" | ".join(_esc(l) for l in resume.languages), s["normal"])]],
+            [[Paragraph("LANGUAGES", s["label"]), Paragraph(_bullet_join(resume.languages), s["normal"])]],
             [LABEL_COL, CONTENT_COL_FULL],
         ))
 
@@ -209,7 +239,7 @@ def write_resume_pdf_europass(resume: ResumeData, output_path: str, photo_bytes:
     if resume.certifications:
         el.append(_section_table(
             [[Paragraph("CERTIFICATIONS", s["label"]),
-              Paragraph(" | ".join(_esc(c) for c in resume.certifications), s["normal"])]],
+              Paragraph(_bullet_join(resume.certifications), s["normal"])]],
             [LABEL_COL, CONTENT_COL_FULL],
         ))
 

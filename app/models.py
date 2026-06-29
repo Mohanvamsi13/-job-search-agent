@@ -61,6 +61,21 @@ class ResumeData(BaseModel):
             parts.append(f"{edu.institution} {edu.degree} {edu.field} {edu.city} {edu.country} {edu.level_eqf}")
         return "\n".join(p for p in parts if p)
 
+    def tailorable_text(self) -> str:
+        """Only the fields tailor.py actually asks the LLM to rewrite:
+        summary, skills, certifications, and experience bullets. Company
+        names, dates, cities, countries, URLs, and ALL of education are
+        never touched by tailoring - they're always copied through
+        verbatim - so they should never be part of what fact-checking
+        scrutinizes. Including them caused false-positive flags (e.g. the
+        fact-checker once misread an EQF qualification level as a claimed
+        program duration and "flagged" a contradiction that didn't exist,
+        on text that was character-for-character identical to the original)."""
+        parts = [self.summary, " ".join(self.skills), " ".join(self.certifications)]
+        for exp in self.experience:
+            parts.extend(exp.bullets)
+        return "\n".join(p for p in parts if p)
+
 
 class JobDescription(BaseModel):
     """Structured extraction of a job posting."""

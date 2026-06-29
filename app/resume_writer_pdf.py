@@ -15,12 +15,14 @@ from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 
 from app.models import ResumeData
 from app.de_format_utils import extract_city
+
+ACCENT = colors.HexColor("#2C5F7C")  # original color choice for the standard/international template
 
 DE_LABELS = {
     "personal": "Persönliche Daten",
@@ -49,17 +51,36 @@ def _styles():
     base = getSampleStyleSheet()
     return {
         "name": ParagraphStyle("Name", parent=base["Title"], fontSize=20, leading=24, spaceAfter=4),
-        "name_center": ParagraphStyle("NameCenter", parent=base["Title"], fontSize=18, leading=22,
-                                       alignment=TA_CENTER, spaceAfter=2),
-        "contact_center": ParagraphStyle("ContactCenter", parent=base["Normal"], fontSize=9.5,
-                                          alignment=TA_CENTER, spaceAfter=10),
-        "heading": ParagraphStyle("Heading", parent=base["Heading2"], fontSize=12,
-                                   spaceBefore=10, spaceAfter=4),
-        "normal": ParagraphStyle("Normal2", parent=base["Normal"], fontSize=10, leading=13),
-        "date_label": ParagraphStyle("DateLabel", parent=base["Normal"], fontSize=9,
+        "name_center": ParagraphStyle("NameCenter", parent=base["Title"], fontSize=13, leading=16,
+                                       alignment=TA_LEFT, textColor=ACCENT, spaceAfter=2),
+        "contact_center": ParagraphStyle("ContactCenter", parent=base["Normal"], fontSize=9,
+                                          alignment=TA_LEFT, spaceAfter=10, textColor=colors.HexColor("#444444")),
+        "heading": ParagraphStyle("Heading", parent=base["Heading2"], fontSize=10, textColor=ACCENT,
+                                   spaceBefore=14, spaceAfter=6, borderColor=ACCENT),
+        "normal": ParagraphStyle("Normal2", parent=base["Normal"], fontSize=9, leading=12),
+        "date_label": ParagraphStyle("DateLabel", parent=base["Normal"], fontSize=8.5,
                                       fontName="Helvetica-Oblique", textColor=colors.grey, leading=12),
-        "right": ParagraphStyle("Right", parent=base["Normal"], fontSize=10, alignment=TA_RIGHT),
+        "right": ParagraphStyle("Right", parent=base["Normal"], fontSize=9, alignment=TA_RIGHT),
     }
+
+
+def _bullet_join(items: list[str]) -> str:
+    sep = '  <font color="#2C5F7C">•</font>  '
+    return sep.join(_esc(i) for i in items)
+
+
+def _section_heading(text: str) -> Table:
+    """A heading with a colored bottom rule for visual separation, instead
+    of bare text - gives sections a more designed feel."""
+    t = Table([[Paragraph(text, ParagraphStyle(
+        "H", fontName="Helvetica-Bold", fontSize=10, textColor=ACCENT))]], colWidths=[17 * cm])
+    t.setStyle(TableStyle([
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBELOW", (0, 0), (-1, -1), 1.2, ACCENT),
+    ]))
+    return t
 
 
 def write_resume_pdf_standard(resume: ResumeData, output_path: str) -> str:
@@ -71,35 +92,39 @@ def write_resume_pdf_standard(resume: ResumeData, output_path: str) -> str:
     el.append(Paragraph(_esc(resume.full_name) or "Your Name", s["name_center"]))
     contact_bits = [b for b in [resume.email, resume.phone, resume.location] if b]
     if contact_bits:
-        el.append(Paragraph(" | ".join(_esc(b) for b in contact_bits), s["contact_center"]))
+        el.append(Paragraph("   |   ".join(_esc(b) for b in contact_bits), s["contact_center"]))
+    rule = Table([[""]], colWidths=[17 * cm], rowHeights=[2])
+    rule.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 2, ACCENT)]))
+    el.append(rule)
+    el.append(Spacer(1, 8))
 
     if resume.summary:
-        el.append(Paragraph("Summary", s["heading"]))
+        el.append(_section_heading("SUMMARY"))
         el.append(Paragraph(_esc(resume.summary), s["normal"]))
 
     if resume.skills:
-        el.append(Paragraph("Skills", s["heading"]))
-        el.append(Paragraph(" | ".join(_esc(sk) for sk in resume.skills), s["normal"]))
+        el.append(_section_heading("SKILLS"))
+        el.append(Paragraph(_bullet_join(resume.skills), s["normal"]))
 
     if resume.experience:
-        el.append(Paragraph("Experience", s["heading"]))
+        el.append(_section_heading("EXPERIENCE"))
         for exp in resume.experience:
             dates = " - ".join(d for d in [exp.start_date, exp.end_date] if d)
             meta = "  |  ".join(b for b in [dates, exp.location] if b)
-            header = f"<b>{_esc(exp.title)} - {_esc(exp.company)}</b>"
+            header = f"<b>{_esc(exp.title)} — {_esc(exp.company)}</b>"
             if meta:
                 header += f"  <i>{_esc(meta)}</i>"
             el.append(Paragraph(header, s["normal"]))
             for bullet in exp.bullets:
                 el.append(Paragraph(f"&bull; {_esc(bullet)}", s["normal"]))
-            el.append(Spacer(1, 6))
+            el.append(Spacer(1, 8))
 
     if resume.certifications:
-        el.append(Paragraph("Certifications", s["heading"]))
-        el.append(Paragraph(" | ".join(_esc(c) for c in resume.certifications), s["normal"]))
+        el.append(_section_heading("CERTIFICATIONS"))
+        el.append(Paragraph(_bullet_join(resume.certifications), s["normal"]))
 
     if resume.education:
-        el.append(Paragraph("Education", s["heading"]))
+        el.append(_section_heading("EDUCATION"))
         for edu in resume.education:
             line = " - ".join(b for b in [edu.degree, edu.field, edu.institution] if b)
             text = f"{_esc(line)} ({_esc(edu.graduation_date)})" if edu.graduation_date else _esc(line)

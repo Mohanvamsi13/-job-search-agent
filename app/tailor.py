@@ -33,10 +33,19 @@ STRICT RULES:
   candidate already listed but that were buried, and tighten language.
 - You MUST NOT: add technologies, certifications, team sizes, infrastructure
   scale, or outcomes that are not explicitly present in the original resume.
+- You MUST NOT drop or omit any of the candidate's original bullets for a
+  job. Every real bullet the candidate already wrote must still appear
+  somewhere in your output for that job - reordered and reworded is fine,
+  removed is not. If a job had 5 bullets, your output for that job must
+  also have 5 bullets (rewording is allowed, deleting real experience is not).
 - If the JD requires something the candidate's resume does not support,
   do not paper over the gap - leave it out rather than fabricate it.
 - Do NOT change company names, job titles, dates, cities, countries, or URLs
   - those are not part of your output at all (see schema below).
+- The summary must be a substantial 3-5 sentence professional profile, not
+  a single short sentence - cover the candidate's core expertise, the kinds
+  of problems they solve, and what makes them a fit for this type of role,
+  using only what's actually in their resume.
 
 Output ONLY valid JSON with this schema, no markdown fences, no commentary:
 
@@ -49,10 +58,9 @@ Output ONLY valid JSON with this schema, no markdown fences, no commentary:
 }
 
 "experience_bullets" must have exactly the same number of entries, in the
-same order, as the candidate's original "experience" list below - each
-inner list is the tailored bullets for that job (same job, reordered/
-reworded bullets only, never a different job or a different bullet count
-that changes the underlying meaning).
+same order, as the candidate's original "experience" list below, AND each
+inner list must have AT LEAST as many bullets as that job's original list -
+reordered/reworded, never fewer.
 """
 
 
@@ -89,6 +97,13 @@ def tailor_resume(resume: ResumeData, jd: JobDescription) -> TailoredResume:
     tailored_experience = []
     for i, exp in enumerate(resume.experience):
         new_bullets = bullet_sets[i] if i < len(bullet_sets) else exp.bullets
+        # Safety net: never trust the prompt instruction alone. If the LLM
+        # returned fewer bullets than the candidate actually wrote for this
+        # job, that's lost real experience - fall back to the original
+        # bullets rather than silently dropping content the candidate
+        # worked to include.
+        if len(new_bullets) < len(exp.bullets):
+            new_bullets = exp.bullets
         entry = exp.model_dump()
         entry["bullets"] = new_bullets
         tailored_experience.append(entry)

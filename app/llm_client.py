@@ -5,11 +5,19 @@ providers again, this is the only file that needs to change.
 Currently wired to Groq (free tier, OpenAI-compatible endpoint, no EEA
 billing restriction - see README for why this was chosen over Gemini/Anthropic).
 """
-from openai import OpenAI
+import re
+
+from openai import OpenAI, RateLimitError
 
 from app.config import settings
 
 _client = None
+
+
+class FriendlyRateLimitError(Exception):
+    """Raised instead of the raw Groq/OpenAI error so the UI can show
+    something actionable rather than a JSON error dump."""
+    pass
 
 
 def _get_client() -> OpenAI:
@@ -23,14 +31,26 @@ def _get_client() -> OpenAI:
 def complete(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> str:
     """Sends one chat completion request, returns the raw text response."""
     client = _get_client()
-    response = client.chat.completions.create(
-        model=settings.groq_model,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.groq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except RateLimitError as e:
+        wait_match = re.search(r"try again in ([\d.]+)([ms])", str(e))
+        wait_text = ""
+        if wait_match:
+            amount, unit = wait_match.groups()
+            unit_label = "minutes" if unit == "m" else "seconds"
+            wait_text = f" Try again in about {float(amount):.0f} {unit_label}."
+        raise FriendlyRateLimitError(
+            "You've hit Groq's free-tier daily token limit (this resets on "
+            "a rolling basis, not at midnight)." + wait_text
+        ) from e
     return response.choices[0].message.content or ""
 
 

@@ -91,7 +91,10 @@ def _dedupe(flags: list[FactCheckFlag]) -> list[FactCheckFlag]:
 
 def fact_check(original: ResumeData, tailored: ResumeData) -> list[FactCheckFlag]:
     original_text = original.flat_text()
-    tailored_text = tailored.flat_text()
+    # Only check the fields tailor.py actually lets the LLM rewrite - never
+    # the structural fields (dates, cities, countries, education, URLs)
+    # that are always copied through verbatim and can't have been altered.
+    tailored_text = tailored.tailorable_text()
 
     flags = _heuristic_numeric_check(original_text, tailored_text)
     flags.extend(_llm_semantic_check_text(original_text, tailored_text, "TAILORED RESUME"))
